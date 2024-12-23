@@ -160,7 +160,7 @@ import org.omnetpp.sequencechart.widgets.axisrenderer.AxisMultiRenderer;
 import org.omnetpp.sequencechart.widgets.axisrenderer.AxisVectorBarRenderer;
 import org.omnetpp.sequencechart.widgets.axisrenderer.AxisMultiVectorBarRenderer;
 import org.omnetpp.sequencechart.widgets.axisrenderer.EthIf;
-import org.omnetpp.sequencechart.widgets.axisrenderer.PCPInfo;
+import org.omnetpp.sequencechart.widgets.axisrenderer.TrafficClassInfo;
 import org.omnetpp.sequencechart.widgets.axisrenderer.IAxisRenderer;
 import org.eclipse.core.runtime.ILog;
 
@@ -2014,41 +2014,44 @@ public class SequenceChartContributor extends EditorActionBarContributor impleme
                     ResultItem resultItem = resultFileManager.getItem(id);
                     IDList selectedIdList = new IDList(id);
 
-//                    /* NOTE: E: USER MODIFICATION */
+                    /* NOTE: E: USER MODIFICATION */
+                    
                     String vectName = resultItem.getName();
             		String moduleName = resultItem.getModuleName();
-            		// GenericNet.switch.eth[1].macLayer.queue.transmissionGate[1]
-            		// GenericNet.switch.eth[1].macLayer.queue.19
             		String moduleNameSans = moduleName.substring(0, moduleName.length()-3);
             		String moduleNameSansAll = moduleName.substring(0, moduleName.length()-19);
             		String moduleNameQ = moduleNameSansAll + "queue";
             		ILog log = SequenceChartPlugin.getDefault().getLog();
                 	int cntr = 0;
                     String dataDebug = "";
-
-
                     
-                    if (vectName.indexOf("TSN") == 0) {	// must be first three chars
+                    // if the vector selected pertains to a PeriodicGate class, and, in particular, is 
+                    // a gateState vector (which contains info about the TSN schedule status), then 
+                    // search for all other gateState vectors (of different gates) from the same 
+                    // switch Ethernet interface
+                    if (vectName.contains("gateState") && moduleName.contains("transmissionGate")) {
                     	log.info("TSN Vector selected!");
                     	
+                    	// the gate number is in between parenthesis at the end of the module name, so extract that
                     	int gateNum = Integer.parseInt(moduleName.substring(moduleName.length()-2, moduleName.length()-1));
                     	EthIf selectionBelongsToEth = new EthIf(moduleNameSansAll);
                     	
+                    	// according to IEEE, there are only 8 possible gates, so find as many as exist
                     	for (int pcpVal = 0; pcpVal < 8; pcpVal++) {
-                    		
+                    		// create the names for the schedule and queue vectors to use for finding these vectors
                     		String currentSched = moduleNameSans + "[" + pcpVal + "]";
                     		String currentQ = moduleNameQ + "[" + pcpVal + "]";
                     		XYArray currentSchedV = null;
                     		XYArray currentQV = null;
                     		int found = 0;
-//                    		log.info("Checking: {" + currentQ + "} and {" + currentSched + "}");
                     		
+                    		// loop through each vector in the IDList to find other relevant queues in the same ethernet interface
                         	for (int idx = 0; idx < idList.size(); idx++) {
                         		
                         		ResultItem curr = resultFileManager.getItem(idList.get(idx));
                         		
-//                        		if (curr.getName().indexOf("TSN") != 0) { continue; }
-                        		if (curr.getModuleName().contains(currentSched) && curr.getName().contains("TSN Gate activity")) {
+                        		// check if the current vector's name matches either one we're looking for
+                        		if (curr.getModuleName().contains(currentSched) && curr.getName().contains("gateState")) {
                             		IDList currIdL = new IDList(idList.get(idx));
                             		log.info("Captured " + curr.getModuleName() + "!");
                                     XYArrayVector dV = ScaveEngine.readVectorsIntoArrays2(resultFileManager, currIdL, true, true);
@@ -2064,40 +2067,27 @@ public class SequenceChartContributor extends EditorActionBarContributor impleme
                         		}
                         	}
                         	
+                        	// if we didn't find both queue fill and schedule vectors, continue (one is kinda useless without the other)
                         	if (found != 2) { break; }
                         	cntr++;
                         	XYArray data = currentSchedV;
-                            for (int idx2 = 0; idx2 < data.length(); idx2++) {
-                            	dataDebug += "(x:" + data.getX(idx2) + "|y:" + data.getY(idx2) + "|px:" + data.getPreciseX(idx2) + "|e:" + data.getEventNumber(idx2) + "),";
-                            }
-                            log.info("data read in " + dataDebug);
+                        	// debug print, ignore
+//                            for (int idx2 = 0; idx2 < data.length(); idx2++) {
+//                            	dataDebug += "(x:" + data.getX(idx2) + "|y:" + data.getY(idx2) + "|px:" + data.getPreciseX(idx2) + "|e:" + data.getEventNumber(idx2) + "),";
+//                            }
+//                            log.info("data read in " + dataDebug);
                         	selectionBelongsToEth.addInfo(pcpVal, currentSchedV, currentQV);
                     	}
                     	
 
                     	log.info("Captured " + cntr + " other TSN vectors coming from " + moduleNameSans + "!");
 
-//                        XYArrayVector dataVector = ScaveEngine.readVectorsIntoArrays2(resultFileManager, selectedIdList, true, true);
 		                IAxisRenderer axisRenderer = new AxisMultiVectorBarRenderer(sequenceChart, vectorFileName, vectorRunName, selectionBelongsToEth);
 		                axisRenderer = new AxisMultiRenderer(new IAxisRenderer[] {new AxisLineRenderer(sequenceChart, axisModule), axisRenderer}, 1);
 		                sequenceChart.setAxisRenderer(axisModule, axisRenderer);
 
                     } else {
-                	
-//                    long tsnIdx = 0;
-//                    for (int i = 0; i < idList.size(); i++) {
-//                    	long idLoop = idList.get(i);
-//                        ResultItem resLoop = resultFileManager.getItem(idLoop);
-//                    	String x = resLoop.getName();
-//                    	if (x.contains("TSN")) {
-//                            IDList idListLoop = new IDList(idLoop);
-//                            XYArrayVector dataVecLoop = ScaveEngine.readVectorsIntoArrays2(resultFileManager, idListLoop, true, true);
-//                            IAxisRenderer axisRendLoop = new AxisVectorBarRenderer(sequenceChart, vectorFileName, vectorRunName, resLoop.getModuleName(), resLoop.getName(), resLoop, dataVecLoop, 0, tsnIdx);
-//                            axisRendLoop = new AxisMultiRenderer(new IAxisRenderer[] {new AxisLineRenderer(sequenceChart, axisModule), axisRendLoop}, 1);
-//                            sequenceChart.setAxisRenderer(axisModule, axisRendLoop);
-//                            tsnIdx++;
-//                    	}
-//                    }
+
                     /* NOTE: E: END USER MODIFICATION */
                     
                         XYArrayVector dataVector = ScaveEngine.readVectorsIntoArrays2(resultFileManager, selectedIdList, true, true);
