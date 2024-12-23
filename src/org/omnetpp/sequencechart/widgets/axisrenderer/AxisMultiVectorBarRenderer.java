@@ -25,8 +25,9 @@ import org.omnetpp.scave.engine.XYArray;
 import org.omnetpp.scave.engine.XYArrayVector;
 import org.omnetpp.sequencechart.widgets.SequenceChart;
 import org.omnetpp.sequencechart.SequenceChartPlugin;
+import org.eclipse.swt.graphics.RGBA;
 import org.omnetpp.sequencechart.widgets.axisrenderer.EthIf;
-import org.omnetpp.sequencechart.widgets.axisrenderer.PCPInfo;
+import org.omnetpp.sequencechart.widgets.axisrenderer.TrafficClassInfo;
 import org.omnetpp.sequencechart.widgets.axisrenderer.NNXYArray;
 import java.util.ArrayList;
 
@@ -36,16 +37,20 @@ import java.util.ArrayList;
  * with the names representing the individual values of a data vector.
  */
 public class AxisMultiVectorBarRenderer implements IAxisRenderer {
-    private static final Color AXIS_COLOR = ColorFactory.ORANGE;
+    private static final Color AXIS_COLOR = ColorFactory.BLACK;
 
-    private static final Font VALUE_NAME_FONT = new Font(null, "Courier New", 12, 0);
+    private static final Font VALUE_NAME_FONT = new Font(null, "Courier New", 12, SWT.BOLD);
 
     private static final Color VALUE_NAME_COLOR = ColorFactory.BLACK;
 
     private static final Color NO_VALUE_COLOR = ColorFactory.WHITE;
-
+    
     private static final int NUM_GATES = 2;
-
+     
+    private static final int GATE_CLOSED = 0;
+    
+    private static final int GATE_OPEN = 1;
+    
     private SequenceChart sequenceChart;
 
     private String vectorFileName;
@@ -72,23 +77,28 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
 
     private EnumType enumType;
 
-    private long numPCP;
+    private int numGates;
     
     private int maxQueueLen;
     
-//    sequenceChart, vectorFileName, vectorRunName, dataVector);
     public AxisMultiVectorBarRenderer(SequenceChart sequenceChart, String fileName, String runName, EthIf eIf) {
         this.sequenceChart = sequenceChart;
+        
+        // for printing debug and warning messages to the Eclipse log
         this.log = SequenceChartPlugin.getDefault().getLog();
+        
         this.dataVectors = new ArrayList<NNXYArray>();
         this.qVectors = new ArrayList<NNXYArray>();
         
+        // populate the queue fill and schedule vectors for each gate
         for (int idx = 0; idx < eIf.size(); idx++) {
         	dataVectors.add(eIf.getInfo(idx).getSchedVector());
         	qVectors.add(eIf.getInfo(idx).getqVector());
         }
         
-        this.numPCP = dataVectors.size();
+        this.numGates = dataVectors.size();
+        // proceed anyway and see what happen
+        if (numGates <= 0 || numGates >= 8) { log.warn("Number of gates is invalid!"); }
     	this.data = dataVectors.get(0);
 
         this.eIf = eIf;
@@ -109,19 +119,37 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
     }
 
     public int getHeight() {
-        return 90;
+    	switch(numGates)
+    	{
+    	case 1:
+    		return 60;
+    	case 2:
+    		return 80;
+    	case 3:
+    		return 120;
+    	case 4:
+    		return 160;
+    	case 5:
+    		return 180;
+    	case 6:
+    		return 200;
+    	case 7:
+    		return 220;
+    	default:
+    		this.log.warn("gate number is not within 0-7! Applying default height.");
+    		return 180;
+    	}
     }
 
     /**
-     * Draws a colored tick bar based on the values in the data vector in the given range.
+     * Draws the TSN schedule along the axis, as well as the queue fill, for each gate number
      */
     public void drawAxis(Graphics graphics, IEvent startEvent, IEvent endEvent)
     {
         Rectangle rect = graphics.getClip(Rectangle.SINGLETON);
-        ILog log = SequenceChartPlugin.getDefault().getLog();
-        log.info("DA: events given: [start:" + startEvent.getEventNumber() + "]" + startEvent.getSimulationTime() + ", [end:" + endEvent.getEventNumber() + "]" + endEvent.getSimulationTime());
-        log.info("DA: clipping rect: " + rect);
-        rect.height += 20;
+//        log.info("DA: events given: [start:" + startEvent.getEventNumber() + "]" + startEvent.getSimulationTime() + ", [end:" + endEvent.getEventNumber() + "]" + endEvent.getSimulationTime());
+//        log.info("DA: clipping rect: " + rect);
+        rect.height += 20;	// add extra space to the clip rect to allow us to draw more
         graphics.setClip(rect);
         
         // draw default color where no value is available
@@ -133,13 +161,10 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
         SequenceChartFacade sequenceChartFacade = sequenceChart.getInput().getSequenceChartFacade();
         IEventLog eventLog = sequenceChart.getInput().getEventLog();
         
-        for (int pcpIdx = 0; pcpIdx < (int)numPCP; pcpIdx++) {
-        	data = dataVectors.get(pcpIdx);
-        	log.info("FOR PCP:"+pcpIdx+", SCHED ARR: " + data.toString());
+        // first print the schedules
+        for (int gateIdx = 0; gateIdx < (int)numGates; gateIdx++) {
+        	data = dataVectors.get(gateIdx);
 
-        	
-//        	data = dataVectors.get(pcpIdx).get(0);
-        	
         	 int size = getDataLength();
 
              int startIndex = getIndex(startEvent, true);
@@ -198,13 +223,14 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
 	                if (x1 == Integer.MAX_VALUE || x2 == Integer.MAX_VALUE)
 	                    continue;
 	
-//	                int colorIndex = getValueIndex(i);
-	                graphics.setBackgroundColor(data.getY(i) == 888 ? ColorFactory.GREEN : (data.getY(i) == 999 ? ColorFactory.RED : ColorFactory.BLUE));
+	                // black to indicate that something's gone wrong, TODO log warnings
+	                graphics.setBackgroundColor(data.getY(i) == GATE_OPEN ? ColorFactory.GREEN : (data.getY(i) == GATE_CLOSED ? ColorFactory.RED : ColorFactory.BLACK));
 
 	                if (phase == 0) {
-	                    graphics.fillRectangle(x1, getScaledHeight()*pcpIdx, x2 - x1, getScaledHeight());
-	                    graphics.setForegroundColor(AXIS_COLOR);
-	                    graphics.drawLine(x1, getScaledHeight()*pcpIdx, x1, pcpIdx == 0 ? 0 : getScaledHeight()*(pcpIdx-1));
+	                    graphics.fillRectangle(x1, getScaledHeight()*gateIdx, x2 - x1, getScaledHeight());
+	                    // the below is for drawing vertical bars at each gateState change
+	                    // graphics.setForegroundColor(AXIS_COLOR);
+	                    // graphics.drawLine(x1, getScaledHeight()*gateIdx, x1, gateIdx == 0 ? 0 : getScaledHeight()*(gateIdx-1));
 	                }
 	
 	                // draw labels starting at each value change and repeat labels based on canvas width
@@ -219,7 +245,7 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
 	
 	                            int x = x1 + 5;
 	                            while (x < rect.right() && x < x2 - labelWidth) {
-	                                graphics.drawText("PCP " + (pcpIdx) + "|" + (data.getY(i) == 999 ? "CLOSED" : "OPEN") + "|" + eventNumber + "["+i+"]", x, pcpIdx*getScaledHeight());
+	                                graphics.drawText("GATE " + (gateIdx) + "|" + (data.getY(i) == GATE_CLOSED ? "CLOSED" : "OPEN") + "|E:" + eventNumber + "[I:"+i+"]", x, gateIdx*getScaledHeight());
 	                                x += sequenceChart.getClientArea().width;
 	                            }
 	                        }
@@ -228,27 +254,29 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
 	            }
 	        }
 	        graphics.setForegroundColor(AXIS_COLOR);
-	        graphics.drawLine(rect.x, pcpIdx == 0 ? 0 : getScaledHeight()*(pcpIdx-1), rect.right(), pcpIdx == 0 ? 0 : getScaledHeight()*(pcpIdx-1));
-	        graphics.drawLine(rect.x, getScaledHeight()*pcpIdx, rect.right(), getScaledHeight()*pcpIdx);
+	        graphics.drawLine(rect.x, gateIdx == 0 ? 0 : getScaledHeight()*(gateIdx-1), rect.right(), gateIdx == 0 ? 0 : getScaledHeight()*(gateIdx-1));
+	        graphics.drawLine(rect.x, getScaledHeight()*gateIdx, rect.right(), getScaledHeight()*gateIdx);
         }
         
-        graphics.drawLine(rect.x, getScaledHeight()*(int)numPCP, rect.right(), getScaledHeight()*(int)numPCP);
+        graphics.drawLine(rect.x, getScaledHeight()*(int)numGates, rect.right(), getScaledHeight()*(int)numGates);
 
 
-        // draw axis as a colored thick line with labels representing values
-        // two phases: first draw the background and after that draw the values
-        for (int pcpIdx = 0; pcpIdx < (int)numPCP; pcpIdx++) {
-        	qData = qVectors.get(pcpIdx);
+        // draw the queue fill lines
+        for (int gateIdx = 0; gateIdx < (int)numGates; gateIdx++) {
+        	qData = qVectors.get(gateIdx);
         	int size = qData.length();
-//        	log.info("FOR PCP:"+ pcpIdx +", QUEUE ARR: " + qData.toString());
+        	if (qData.length() == 0) { continue; }
         	int maxQ = 0;
         	
-        	
+        	// find the largest queue fill
         	for (int idx2 = 0; idx2 < size; idx2++) {
         		if (qData.getY(idx2) > maxQ) {maxQ = (int)qData.getY(idx2);}
         	}
+        	if (maxQ == 0) {maxQ = 1;}	// set to 1 to avoid div by zero
         	
-        	int slicedUp = (int)(getScaledHeight() / maxQ);
+        	// divide the schedule rectangle into slices based on the max queue fill
+//        	int slicedUp = (int)(getScaledHeight() / maxQ);
+        	
 			int startIndex = getIndexMine(startEvent, qData, true);
 			if (startIndex == -1) { startIndex = 0; }
 			
@@ -256,11 +284,10 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
 			if (endIndex == -1) { endIndex = size; }
 
 			long endEventNumber = endEvent.getEventNumber();
-        	log.info("Drawing bars for QUEUE. Given ST:" + startEvent.getEventNumber() + "ED:" + endEventNumber +"; PCP:" + pcpIdx + ", ST:" + qData.getEventNumber(startIndex) + ", ED:" + qData.getEventNumber(endIndex));
 
 			for (int i = startIndex; i < endIndex; i++) {
-                long eventNumber = getEventNumberMine(i, qData);
-                long nextEventNumber = Math.min(endEventNumber, (i == size - 1) ? endEventNumber : getEventNumberMine(i + 1, qData));
+                long eventNumber = qData.getEventNumber(i);
+                long nextEventNumber = Math.min(endEventNumber, (i == size - 1) ? endEventNumber : qData.getEventNumber(i + 1));
             	
                 if (eventNumber == -1 || nextEventNumber == -1 || eventNumber >= nextEventNumber)
                     continue;
@@ -301,23 +328,34 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
                 if (x1 == Integer.MAX_VALUE || x2 == Integer.MAX_VALUE)
                     continue;
 
-//                int colorIndex = getValueIndex(i);
-                // TODO: maybe add color ranges so that big number = red, small = green or something
                 graphics.setBackgroundColor(ColorFactory.BLUE);
-            	graphics.fillRectangle(x1, (int)(getScaledHeight()*(pcpIdx)+(getScaledHeight() - (int)((qData.getY(i) * slicedUp)))), x2 - x1, (int)((qData.getY(i) * slicedUp)));
-//                graphics.setForegroundColor(AXIS_COLOR);
-//                graphics.drawLine(x1, getScaledHeight()*pcpIdx, x1, pcpIdx == 0 ? 0 : getScaledHeight()*(pcpIdx-1));
+                graphics.setForegroundColor(ColorFactory.BLUE);
+
+            	int y1 = (int)(getScaledHeight()*(gateIdx)+(getScaledHeight() - convertScale(qData.getY(i),maxQ)));
+            	int y2 = (int)(getScaledHeight()*(gateIdx)+(getScaledHeight() - convertScale(qData.getY((i == size - 1) ? i : i+1), maxQ)));
+                log.info("DA: Y: " + qData.getY(i) + ", maxQ: " + maxQ + ", ConvScale: "+ convertScale(qData.getY(i),maxQ) + " y1: " + y1 + " y2: " + y2);
+
+                graphics.fillRectangle(x1, y1, x2 - x1, (int)(5));
+
+                int prevLW = graphics.getLineWidth();
+                graphics.setLineWidth(5);
+            	graphics.drawLine(x1 + (x2 - x1),y1+2, x2, y2+2);
+            	graphics.setLineWidth(prevLW);
 			}
 			
         }
-        
         data = dataVectors.get(0);
     }
     
+    private int convertScale(double value, int max) {
+    	return (int)((double)((double)getScaledHeight() / (double)max) * value);
+    }
+    
     private int getScaledHeight() {
-    	return getHeight() / (int)numPCP;
+    	return getHeight() / (int)numGates;
     }
 
+    // modified getIndex() that uses NNXYArray and simpler logic
     public int getIndexMine(IEvent event, NNXYArray toFind, boolean before) {
     	long eventNumber = event.getEventNumber();
     	int idx = 0;
@@ -457,8 +495,7 @@ public class AxisMultiVectorBarRenderer implements IAxisRenderer {
     public long getEventNumber(int index)
     {
         if (0 > index || index >= data.length()) {
-            ILog log = SequenceChartPlugin.getDefault().getLog();
-//            log.info("OOB ERROR!! [" + index + "] v.s. " + data.length());
+            log.warn("Event number OOB! [" + index + "] v.s. " + data.length());
             return -1;
         }
         data.getX(index);
