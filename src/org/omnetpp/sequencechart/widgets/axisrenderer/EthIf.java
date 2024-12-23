@@ -11,50 +11,52 @@ import org.omnetpp.sequencechart.SequenceChartPlugin;
 import org.omnetpp.eventlog.IEventLog;
 import org.omnetpp.sequencechart.widgets.axisrenderer.NNXYArray;
 
+/**
+ * Represents a switch's Ethernet interface
+ */
 public class EthIf {
     public String moduleNameStart;
-    public TreeMap<Integer, PCPInfo> pcpToInfo;
-
+    // maps gates to queue fill and schedule vectors
+    public TreeMap<Integer, TrafficClassInfo> gateToInfo;	
+    
     public EthIf(String modName) {
         this.moduleNameStart = modName;
-        this.pcpToInfo = new TreeMap<Integer, PCPInfo>();
-//        for (int idx = 0; idx < 8; idx++) {pcpToInfo[idx] = null;}
-//        this.head = 0;
+        this.gateToInfo = new TreeMap<Integer, TrafficClassInfo>();
     }
 
-    public void addInfo(int pcpVal, XYArray schedVector, XYArray qVector) {
+    /**
+     * Add a mapping from gate to queue fill and schedule vectors. Converts 
+     * the XYArrays to local NNXArrays.
+     * 
+     * @param gateVal the gate number to use as a key
+     * @param schedVector the schedule (gateState) vector
+     * @param qVector the queue fill (queueLength) vector
+     */
+    public void addInfo(int gateVal, XYArray schedVector, XYArray qVector) {
+    	// first convert the XYArrays to NNXYArrays
     	NNXYArray schedNN = new NNXYArray(schedVector);
     	NNXYArray qNN = new NNXYArray(qVector);
     	
-        PCPInfo toAdd = new PCPInfo(pcpVal, schedNN, qNN);
-        if (pcpVal < 0 || pcpVal > 7) {throw new IllegalArgumentException();}
+    	// add the gate number as a key to the map
+        TrafficClassInfo toAdd = new TrafficClassInfo(gateVal, schedNN, qNN);
+        if (gateVal < 0 || gateVal > 7) {throw new IllegalArgumentException();}
         
-        pcpToInfo.put(pcpVal, toAdd);
+        gateToInfo.put(gateVal, toAdd);
     }
 
-    public PCPInfo getInfo(int pcpVal) {
-        if (pcpVal < 0 || pcpVal > 7) {throw new IllegalArgumentException();}
-//        String dataDebug = "";
-//        ILog log = SequenceChartPlugin.getDefault().getLog();
-//        XYArray data = pcpToInfo[(pcpVal)].getSchedVector();
-//        for (int idx = 0; idx < data.length(); idx++) {
-//        	dataDebug += "(x:" + data.getX(idx) + "|y:" + data.getY(idx) + "|px:" + data.getPreciseX(idx) + "|e:" + data.getEventNumber(idx) + "),";
-//        }
-//        log.info("getInfo(" + pcpVal + "):" + dataDebug);
-//        return pcpToInfo[(pcpVal)];
-        return pcpToInfo.get(pcpVal);
+    /**
+     * Retrieve the queue fill and schedule vectors given the gate number.
+     * 
+     * @param gateVal the gate number
+     * @return the TrafficClassInfo containing the two related vectors
+     */
+    public TrafficClassInfo getInfo(int gateVal) {
+        if (gateVal < 0 || gateVal > 7) {throw new IllegalArgumentException();}
+        return gateToInfo.get(gateVal);
     }
     
     public int size() {
-    	return pcpToInfo.size();
-//        ILog log = SequenceChartPlugin.getDefault().getLog();
-//        int cntr = 0;
-//        for (int idx = 0; idx < 8; idx++) {
-//        	if (pcpToInfo[idx] != null) {cntr++;}
-//        }
-//        
-//        log.info("PCP SIZE: " + cntr);
-//    	return cntr;
+    	return gateToInfo.size();
     }
 
 
